@@ -55,7 +55,7 @@ print("Dataset size: ", dataTrain:size())
 -- Residual network.
 -- Input: 3x32x32
 -- local N = opt.Nsize
-local N = 5 -- 32 layers
+local N = 1 -- 32 layers
 if opt.loadFrom == "" then
     input = nn.Identity()()
     ------> 3, 32,32
@@ -92,50 +92,6 @@ loss = nn.ClassNLLCriterion()
 loss:cuda()
 
 sgdState = {
-   --- For SGD with momentum ---
-   ----[[
-   -- My semi-working settings
-   learningRate   = "will be set later",
-   weightDecay    = 1e-4,
-   -- Settings from their paper
-   --learningRate = 0.1,
-   --weightDecay    = 1e-4,
-
-   momentum     = 0.9,
-   dampening    = 0,
-   nesterov     = true,
-   --]]
-   --- For rmsprop, which is very fiddly and I don't trust it at all ---
-   --[[
-   learningRate = "Will be set later",
-   alpha = 0.9,
-   whichOptimMethod = 'rmsprop',
-   --]]
-   --- For adadelta, which sucks ---
-   --[[
-   rho              = 0.3,
-   whichOptimMethod = 'adadelta',
-   --]]
-   --- For adagrad, which also sucks ---
-   --[[
-   learningRate = "Will be set later",
-   whichOptimMethod = 'adagrad',
-   --]]
-   --- For adam, which also sucks ---
-   --[[
-   learningRate = 0.005,
-   whichOptimMethod = 'adam',
-   --]]
-   --- For the alternate implementation of NAG ---
-   --[[
-   learningRate = 0.01,
-   weightDecay = 1e-6,
-   momentum = 0.9,
-   whichOptimMethod = 'nag',
-   --]]
-   --
-
-   --whichOptimMethod = opt.whichOptimMethod,
 }
 
 
@@ -150,37 +106,13 @@ end
 
 -- Actual Training! -----------------------------
 weights, gradients = model:getParameters()
-weightsTab, gradientsTab = model:parameters()
 function forwardBackwardBatch(batch)
     -- After every batch, the different GPUs all have different gradients
     -- (because they saw different data), and only the first GPU's weights were
     -- actually updated.
-    -- We have to do two changes:
-    --   - Copy the new parameters from GPU #1 to the rest of them;
-    --   - Zero the gradient parameters so we can accumulate them again.
+    -- Zero the gradient parameters so we can accumulate them again.
     model:training()
     gradients:zero()
-
-    --[[
-    -- Reset BN momentum, nvidia-style
-    model:apply(function(m)
-        if torch.type(m):find('BatchNormalization') then
-            m.momentum = 1.0  / ((m.count or 0) + 1)
-            m.count = (m.count or 0) + 1
-            print("--Resetting BN momentum to", m.momentum)
-            print("-- Running mean is", m.running_mean:mean(), "+-", m.running_mean:std())
-        end
-    end)
-    --]]
-
-    -- From https://github.com/bgshih/cifar.torch/blob/master/train.lua#L119-L128
-    if sgdState.epochCounter < 50 then
-        sgdState.learningRate = 0.1
-    elseif sgdState.epochCounter < 60 then
-        sgdState.learningRate = 0.01
-    else
-        sgdState.learningRate = 0.001
-    end
 
     local loss_val = 0
     local N = opt.iterSize
@@ -206,10 +138,10 @@ end
 -- files recording training and testing error
 ---[[
 dir = "/usr/project/xtmp/shuzhiyu/resnet_torch_exp/workspace/"
-foTrTop1 = io.open(dir.."trTop1.txt", "a")
---foTrTop5 = io.open(dir.."trTop5.txt", "a")
-foTeTop1 = io.open(dir.."teTop1.txt", "a")
---foTeTop5 = io.open(dir.."teTop5.txt", "a")
+foTrTop1 = io.open(dir.."trTop1_SVRG.txt", "a")
+foTrTop5 = io.open(dir.."trTop5_SVRG.txt", "a")
+foTeTop1 = io.open(dir.."teTop1_SVRG.txt", "a")
+foTeTop5 = io.open(dir.."teTop5_SVRG.txt", "a")
 --]]
 function evalModel()
     ---[[
@@ -217,7 +149,7 @@ function evalModel()
     local trResults = evaluateModel(model, dataTrain, opt.batchSize)
     foTrTop1:write(trResults.."  ")
     foTrTop1:flush()
-    --[[
+    ---[[
     foTrTop1:write(trResults.correct1.."  ")
     foTrTop1:flush()
     foTrTop5:write(trResults.correct5.."  ")
@@ -227,18 +159,14 @@ function evalModel()
     local teResults = evaluateModel(model, dataTest, opt.batchSize)
     foTeTop1:write(teResults.."  ")
     foTeTop1:flush()
-    --[[
+    ---[[
     foTeTop1:write(teResults.correct1.."  ")
     foTeTop1:flush()
     foTeTop5:write(teResults.correct5.."  ")
     foTeTop5:flush()
     --]]
-    --[[
-    if sgdState.epochCounter then
-      print("the sgdState.epochCounter is: "..sgdState.epochCounter)
-    end
-    --]]
-    if (sgdState.epochCounter or 0) > 70 then
+    
+    if (sgdState.epochCounter or 0) > 50 then
         print("Training complete, go home")
         -- close files
         ---[[
@@ -253,21 +181,6 @@ function evalModel()
 end
 
 evalModel()
-
---[[
-require 'graph'
-graph.dot(model.fg, 'MLP', '/tmp/MLP')
-os.execute('convert /tmp/MLP.svg /tmp/MLP.png')
-display.image(image.load('/tmp/MLP.png'), {title="Network Structure", win=23})
---]]
-
---[[
-require 'ncdu-model-explore'
-local y = model:forward(torch.randn(opt.batchSize, 3, 32,32):cuda())
-local df_dw = loss:backward(y, torch.zeros(opt.batchSize):cuda())
-model:backward(torch.randn(opt.batchSize,3,32,32):cuda(), df_dw)
-exploreNcdu(model)
---]]
 
 
 

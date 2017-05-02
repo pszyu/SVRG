@@ -18,6 +18,10 @@ freely, subject to the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 --]]
 
+--[[]
+adjusted by Shuzhi Yu for own experiments
+--]]
+
 
 require 'optim'
 TrainingHelpers = {}
@@ -26,7 +30,7 @@ function evaluateModel(model, datasetTest, batchSize)
    print("Evaluating...")
    model:evaluate()
    local correct1 = 0
-   --local correct5 = 0
+   local correct5 = 0
    local total = 0
    local batches = torch.range(1, datasetTest:size()):long():split(batchSize)
    for i=1,#batches do
@@ -38,13 +42,13 @@ function evaluateModel(model, datasetTest, batchSize)
        local _, indices = torch.sort(y, 2, true)
        -- indices has shape (batchSize, nClasses)
        local top1 = indices:select(2, 1)
-       --local top5 = indices:narrow(2, 1,5)
+       local top5 = indices:narrow(2, 1,5)
        correct1 = correct1 + torch.eq(top1, labels):sum()
-       --correct5 = correct5 + torch.eq(top5, labels:view(-1, 1):expandAs(top5)):sum()
+       correct5 = correct5 + torch.eq(top5, labels:view(-1, 1):expandAs(top5)):sum()
        total = total + indices:size(1)
        --xlua.progress(total, datasetTest:size())
    end
-   return correct1/total--{correct1=correct1/total, correct5=correct5/total}
+   return {correct1=correct1/total, correct5=correct5/total}
 end
 
 
@@ -111,12 +115,13 @@ function TrainingHelpers.trainForever(forwardBackwardBatch, weights, sgdState, e
        whichOptimMethod = optim[sgdState.whichOptimMethod]
    end
 
+   -- record data begins
    -- create file writers
    dir = "/usr/project/xtmp/shuzhiyu/resnet_torch_exp/accu_workspace/"
    fileWriter = nil
    indItr = 1
-   samplePeriod = 150
-   nOutput = 30
+   alpha = 0.1
+   m = 10
    
    while true do -- Each epoch
       collectgarbage(); collectgarbage()
@@ -124,41 +129,24 @@ function TrainingHelpers.trainForever(forwardBackwardBatch, weights, sgdState, e
       local loss_val, gradients, batchProcessed = forwardBackwardBatch()
 
       -- begin to record data
-      fw_binary = torch.DiskFile(dir.."resnet_Itr"..indItr..".dat", "w"):binary()
-      for _, layer in ipairs(model.modules) do
-        if (layer.gradWeight) then
+      if indItr % 50 == 1 then
+        fw_binary = torch.DiskFile(dir.."resnet_Itr"..indItr..".dat", "w"):binary()
+        for _, layer in ipairs(model.modules) do
           -- write layer name and number of data types
           if string.find(tostring(layer), "Convolution") then
             fw_binary:writeChar(torch.CharStorage():string("conv"))
-            fw_binary:writeInt(4)
-          elseif string.find(tostring(layer), "BatchNormal") then
-            fw_binary:writeChar(torch.CharStorage():string("bano")) -- need change to invole full connected layer
-            fw_binary:writeInt(6)
-          else
-            fw_binary:writeChar(torch.CharStorage():string("fcnn")) -- full connected network
-            fw_binary:writeInt(4)
-          end
-          -- weight
-          write(fw_binary, "weig", layer.weight)
-          -- gradient Weight
-          write(fw_binary, "gwei", layer.gradWeight)
-          -- bias
-          write(fw_binary, "bias", layer.bias)
-          -- gradient bias
-          write(fw_binary, "gbia", layer.gradBias)
-
-          -- write mean and std for bano layer
-          if string.find(tostring(layer), "BatchNormal") then
-            -- batch mean
-            write(fw_binary, "mean", layer.save_mean)
-            -- batch std
-            write(fw_binary, "stde", layer.save_std)
+            fw_binary:writeInt(2)
+            -- gradient Weight
+            write(fw_binary, "gwei", layer.gradWeight)
+            -- gradient bias
+            write(fw_binary, "gbia", layer.gradBias)
           end
         end
       end
       fw_binary:close() 
-      
       indItr = indItr + 1
+      -- record data ends
+
 
       -- SGD step: modifies weights in-place
       whichOptimMethod(function() return loss_val, gradients end,
@@ -167,7 +155,6 @@ function TrainingHelpers.trainForever(forwardBackwardBatch, weights, sgdState, e
       -- Display progress and loss
       sgdState.nSampledImages = sgdState.nSampledImages + batchProcessed
       sgdState.nEvalCounter = sgdState.nEvalCounter + 1
-      --xlua.progress(sgdState.nSampledImages%epochSize, epochSize)
 
       if math.floor(sgdState.nSampledImages / epochSize) ~= sgdState.epochCounter then
          -- Epoch completed!
