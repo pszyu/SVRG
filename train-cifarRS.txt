@@ -1,0 +1,5 @@
+#Job Name: run the resnet cifar porch version experiments on the cluster
+
+cd /usr/project/xtmp/shuzhiyu/resnet_torch_exp
+~/torch/install/bin/th train-cifar.lua --dataRoot /usr/project/xtmp/shuzhiyu/resnet_torch_exp/dataset/cifar-10-batches-t7 
+
