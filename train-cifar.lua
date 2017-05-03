@@ -141,7 +141,6 @@ function forwardBackwardBatch(ind_sam)
     loss_val = loss_val / N
     gradients:mul( 1.0 / N )
 
-    return loss_val, gradients
 end
 
 
