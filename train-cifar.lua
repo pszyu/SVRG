@@ -18,6 +18,10 @@ freely, subject to the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 --]]
 
+--[[
+adjusted by Shuzhi Yu for own experiments
+--]]
+
 require 'residual-layers'
 require 'nn'
 require 'data.cifar-dataset'
@@ -106,32 +110,38 @@ end
 
 -- Actual Training! -----------------------------
 weights, gradients = model:getParameters()
-function forwardBackwardBatch(batch)
-    -- After every batch, the different GPUs all have different gradients
-    -- (because they saw different data), and only the first GPU's weights were
+function forwardBackwardBatch(ind_sam)
+    -- parameter batch is the index of the one sample in batch to use
+    -- batch = 0 includes all the samples
+
     -- actually updated.
     -- Zero the gradient parameters so we can accumulate them again.
     model:training()
     gradients:zero()
 
     local loss_val = 0
-    local N = opt.iterSize
-    local inputs, labels
-    for i=1,N do
-        inputs, labels = dataTrain:getBatch()
-        inputs = inputs:cuda()
-        labels = labels:cuda()
-        collectgarbage(); collectgarbage();
-        local y = model:forward(inputs)
-        loss_val = loss_val + loss:forward(y, labels)
-        local df_dw = loss:backward(y, labels)
-        model:backward(inputs, df_dw)
-        -- The above call will accumulate all GPUs' parameters onto GPU #1
+    local inputs, labels, sel_input, sel_label
+    inputs, labels = dataTrain:getData()
+    if batch > 0 then
+      sel_input = inputs:index(1, ind_sam)
+      sel_label = labels:index(1, ind_sam)
+    else
+      sel_input = inputs
+      sel_label = labels
     end
+    sel_input = sel_input:cuda()
+    sel_label = sel_label:cuda()
+    collectgarbage(); collectgarbage();
+    local y = model:forward(sel_input)
+    loss_val = loss_val + loss:forward(y, sel_label)
+    local df_dw = loss:backward(y, sel_label)
+    model:backward(sel_input, df_dw)
+    -- The above call will accumulate all GPUs' parameters onto GPU #1
+
     loss_val = loss_val / N
     gradients:mul( 1.0 / N )
 
-    return loss_val, gradients, inputs:size(1) * N
+    return loss_val, gradients
 end
 
 
@@ -147,34 +157,25 @@ function evalModel()
     ---[[
     -- training error
     local trResults = evaluateModel(model, dataTrain, opt.batchSize)
-    foTrTop1:write(trResults.."  ")
-    foTrTop1:flush()
-    ---[[
     foTrTop1:write(trResults.correct1.."  ")
     foTrTop1:flush()
     foTrTop5:write(trResults.correct5.."  ")
     foTrTop5:flush()
-    --]]
+
     -- testing error
     local teResults = evaluateModel(model, dataTest, opt.batchSize)
-    foTeTop1:write(teResults.."  ")
-    foTeTop1:flush()
-    ---[[
     foTeTop1:write(teResults.correct1.."  ")
     foTeTop1:flush()
     foTeTop5:write(teResults.correct5.."  ")
     foTeTop5:flush()
-    --]]
     
     if (sgdState.epochCounter or 0) > 50 then
         print("Training complete, go home")
         -- close files
-        ---[[
         foTrTop1:close()
-        --foTrTop5:close()
+        foTrTop5:close()
         foTeTop1:close()
-        --foTeTop5:close()
-        --]]
+        foTeTop5:close()
         torch.save(dir.."resnet.t7", model)
         os.exit()
     end
@@ -184,7 +185,6 @@ evalModel()
 
 
 
--- --[[
 TrainingHelpers.trainForever(
 forwardBackwardBatch,
 weights,
@@ -192,4 +192,3 @@ sgdState,
 dataTrain:size(),
 evalModel
 )
---]]

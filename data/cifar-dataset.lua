@@ -5,7 +5,7 @@ Dataset = {}
 local CIFAR, parent = torch.class("Dataset.CIFAR")
 
 function CIFAR:__init(path, mode, batchSize)
-   local trsize = 50000
+   local trsize = 20000
    local tesize = 10000
    self.batchSize = batchSize
    self.mode = mode
@@ -14,7 +14,7 @@ function CIFAR:__init(path, mode, batchSize)
       self.data = torch.Tensor(trsize, 3*32*32)
       self.labels = torch.Tensor(trsize)
       self.size = function() return trsize end
-      for i = 0,4 do
+      for i = 0,1 do
          local subset = torch.load(path..'/data_batch_' .. (i+1) .. '.t7', 'ascii')
          self.data[{ {i*10000+1, (i+1)*10000} }] = subset.data:t()
          self.labels[{ {i*10000+1, (i+1)*10000} }] = subset.labels
@@ -95,9 +95,9 @@ function CIFAR:size()
    return self.data:size(1)
 end
 
-function CIFAR:getBatch()
+function CIFAR:getData()
    -- You should use sample instead! :-)
-   local batch = self:sample(self.batchSize)
+   local batch = self:sample(self.size)
    return batch.inputs, batch.outputs
 end
 

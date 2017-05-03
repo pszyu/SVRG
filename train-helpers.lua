@@ -18,7 +18,7 @@ freely, subject to the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 --]]
 
---[[]
+--[[
 adjusted by Shuzhi Yu for own experiments
 --]]
 
@@ -46,7 +46,6 @@ function evaluateModel(model, datasetTest, batchSize)
        correct1 = correct1 + torch.eq(top1, labels):sum()
        correct5 = correct5 + torch.eq(top5, labels:view(-1, 1):expandAs(top5)):sum()
        total = total + indices:size(1)
-       --xlua.progress(total, datasetTest:size())
    end
    return {correct1=correct1/total, correct5=correct5/total}
 end
@@ -106,30 +105,60 @@ function TrainingHelpers.trainForever(forwardBackwardBatch, weights, sgdState, e
    local d = Date{os.date()}
    local modelTag = string.format("%04d%02d%02d-%d",
       d:year(), d:month(), d:day(), torch.random())
-   sgdState.epochSize = epochSize
-   sgdState.epochCounter = sgdState.epochCounter or 0
-   sgdState.nSampledImages = sgdState.nSampledImages or 0
-   sgdState.nEvalCounter = sgdState.nEvalCounter or 0
-   local whichOptimMethod = optim.sgd
-   if sgdState.whichOptimMethod then
-       whichOptimMethod = optim[sgdState.whichOptimMethod]
-   end
 
    -- record data begins
    -- create file writers
    dir = "/usr/project/xtmp/shuzhiyu/resnet_torch_exp/accu_workspace/"
    fileWriter = nil
    indItr = 1
+
+   -- algorithm implemented as in paper Optimization Methods for Large-Scale Machine Learning
    alpha = 0.1
    m = 10
-   
+   -- initial state w1 is the initialization by kaiming init method
+   -- get the weights and gradients vector (pointers)
+   weights, gradients = model:getParameters()
+   -- define number of training samples
+   nSams = epochSize
+
    while true do -- Each epoch
       collectgarbage(); collectgarbage()
-      -- Run forward and backward pass on inputs and labels
-      local loss_val, gradients, batchProcessed = forwardBackwardBatch()
+      
+      -- k is 50, after 50 epochs, will stop as controlled by evalModel()
+      -- compute the batch gradients
+      forwardBackwardBatch(0)
+      local wk = torch.Tensor(weights:size()):copy(weights)
+      -- define the weights in the inner loop
+      local wj_bar = torch.Tensor(weights:size()):copy(weights)
+      local grad_Rn_wk = torch.Tensor(gradients:size()):copy(gradients)
+      local grad_fij_wk = torch.Tensor(gradients:size()):copy(gradients)
+      local grad_fij_wk_bar = torch.Tensor(gradients:size()):copy(gradients)
+      local wj_bar_accu = torch.Tensor(weights:size()):fill(0)
+      for j = 1,m do
+        local ij = math.random(nSams)
+        -- calculate delta(fij(wk))
+        weights:copy(wk)
+        forwardBackwardBatch(ij)
+        -- now the gradients is delta(fij(wk))
+        grad_fij_wk:copy(gradients)
+
+        -- calculate delta(fij_wk_bar)
+        weights:copy(wj_bar)
+        forwardBackwardBatch(ij)
+        -- now the gradients is delta(fij_(wk_bar))
+        grad_fij_wk_bar:copy(gradients)
+
+        local gj_bar = grad_fij_wk_bar:csub(grad_fij_wk):add(grad_Rn_wk)
+        wj_bar:csub(gj_bar:mul(alpha))
+        -- accumulate wj_bar
+        wj_bar_accu:add(wj_bar)
+      end
+      -- implement option b here
+      weights:copy(wj_bar_accu:mul(1/m))
+
 
       -- begin to record data
-      if indItr % 50 == 1 then
+      if indItr % 100 == 1 then
         fw_binary = torch.DiskFile(dir.."resnet_Itr"..indItr..".dat", "w"):binary()
         for _, layer in ipairs(model.modules) do
           -- write layer name and number of data types
@@ -147,23 +176,9 @@ function TrainingHelpers.trainForever(forwardBackwardBatch, weights, sgdState, e
       indItr = indItr + 1
       -- record data ends
 
-
-      -- SGD step: modifies weights in-place
-      whichOptimMethod(function() return loss_val, gradients end,
-                       weights,
-                       sgdState)
-      -- Display progress and loss
-      sgdState.nSampledImages = sgdState.nSampledImages + batchProcessed
-      sgdState.nEvalCounter = sgdState.nEvalCounter + 1
-
-      if math.floor(sgdState.nSampledImages / epochSize) ~= sgdState.epochCounter then
-         -- Epoch completed!
-         
-         --xlua.progress(epochSize, epochSize)
-         sgdState.epochCounter = math.floor(sgdState.nSampledImages / epochSize)
-         if afterEpoch then afterEpoch() end
-         print("\n\n----- Epoch "..sgdState.epochCounter.." -----")
-      end
+      if afterEpoch then afterEpoch() end
+      print("\n\n----- Epoch "..sgdState.epochCounter.." -----")
+      
    end
 end
 
