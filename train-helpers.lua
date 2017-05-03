@@ -121,12 +121,13 @@ function TrainingHelpers.trainForever(forwardBackwardBatch, weights, sgdState, e
    -- define number of training samples
    nSams = epochSize
 
+   -- compute the batch gradients
+   forwardBackwardBatch(0)
+
    while true do -- Each epoch
       collectgarbage(); collectgarbage()
       
-      -- k is 50, after 50 epochs, will stop as controlled by evalModel()
-      -- compute the batch gradients
-      forwardBackwardBatch(0)
+      -- k is 50, after 50 epochs, will stop as controlled by evalModel()   
       local wk = torch.Tensor(weights:size()):copy(weights)
       -- define the weights in the inner loop
       local wj_bar = torch.Tensor(weights:size()):copy(weights)
@@ -155,6 +156,7 @@ function TrainingHelpers.trainForever(forwardBackwardBatch, weights, sgdState, e
       end
       -- implement option b here
       weights:copy(wj_bar_accu:mul(1/m))
+      forwardBackwardBatch(0)
 
 
       -- begin to record data
