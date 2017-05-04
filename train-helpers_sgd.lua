@@ -111,13 +111,12 @@ function TrainingHelpers.trainForever(forwardBackwardBatch, weights, sgdState, e
     
    -- record data begins
    -- create file writers
-   dir = "/Users/PaulYu/Documents/CEE670/workspace/"
+   dir = "/Users/PaulYu/Documents/CEE670/workspace_sgd/"
    fileWriter = nil
-   indItr = 1
 
    -- algorithm implemented as in paper Optimization Methods for Large-Scale Machine Learning
    alpha = 0.1
-   m = 100
+   
    -- initial state w1 is the initialization by kaiming init method
    -- get the weights and gradients vector (pointers)
    weights, gradients = model:getParameters()
@@ -129,37 +128,11 @@ function TrainingHelpers.trainForever(forwardBackwardBatch, weights, sgdState, e
 
    while true do -- Each epoch
       collectgarbage(); collectgarbage()
-      
-      -- k is 50, after 50 epochs, will stop as controlled by evalModel()   
-      local wk = torch.Tensor(weights:size()):copy(weights)
-      -- define the weights in the inner loop
-      local wj_bar = torch.Tensor(weights:size()):copy(weights)
-      local grad_Rn_wk = torch.Tensor(gradients:size()):copy(gradients)
-      local grad_fij_wk = torch.Tensor(gradients:size()):copy(gradients)
-      local grad_fij_wk_bar = torch.Tensor(gradients:size()):copy(gradients)
-      local wj_bar_accu = torch.Tensor(weights:size()):fill(0)
-      for j = 1,m do
-        local ij = math.random(nSams)
-        -- calculate delta(fij(wk))
-        weights:copy(wk)
-        forwardBackwardBatch(ij)
-        -- now the gradients is delta(fij(wk))
-        grad_fij_wk:copy(gradients)
-
-        -- calculate delta(fij_wk_bar)
-        weights:copy(wj_bar)
-        forwardBackwardBatch(ij)
-        -- now the gradients is delta(fij_(wk_bar))
-        grad_fij_wk_bar:copy(gradients)
-
-        local gj_bar = grad_fij_wk_bar:csub(grad_fij_wk):add(grad_Rn_wk)
-        wj_bar:csub(gj_bar:mul(alpha))
-        -- accumulate wj_bar
-        wj_bar_accu:add(wj_bar)
-      end
-      -- implement option b here
-      weights:copy(wj_bar_accu:mul(1/m))
-      forwardBackwardBatch(0)
+      -- begin sgd step
+      local ij = math.random(nSams)
+      forwardBackwardBatch(ij)
+      -- update weights
+      weights:csub(gradients:mul(alpha))
 
 
       -- begin to record data

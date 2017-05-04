@@ -26,7 +26,7 @@ require 'residual-layers'
 require 'nn'
 require 'data.cifar-dataset'
 require 'nngraph'
-require 'train-helpers'
+require 'train-helpers_sgd'
 local nninit = require 'nninit'
 
 -- notes here
@@ -141,9 +141,9 @@ end
 
 -- files recording training and testing error
 ---[[
-dir = "/Users/PaulYu/Documents/CEE670/workspace/"
-foTrTop1 = io.open(dir.."trTop1_SVRG.txt", "a")
-foTrTop5 = io.open(dir.."trTop5_SVRG.txt", "a")
+dir = "/Users/PaulYu/Documents/CEE670/workspace_sgd/"
+foTrTop1 = io.open(dir.."trTop1_sgd.txt", "a")
+foTrTop5 = io.open(dir.."trTop5_sgd.txt", "a")
 -- foTeTop1 = io.open(dir.."teTop1_SVRG.txt", "a")
 -- foTeTop5 = io.open(dir.."teTop5_SVRG.txt", "a")
 --]]
@@ -170,8 +170,8 @@ function evalModel()
         -- close files
         foTrTop1:close()
         foTrTop5:close()
-        -- foTeTop1:close()
-        -- foTeTop5:close()
+        foTeTop1:close()
+        foTeTop5:close()
         torch.save(dir.."resnet.t7", model)
         os.exit()
     end
